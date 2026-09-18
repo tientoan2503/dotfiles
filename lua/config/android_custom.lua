@@ -29,6 +29,7 @@ local deploy = require("android.build.deploy")
 local devices_adb = require("android.devices.adb")
 local discovery = require("android.sdk.discovery")
 local gradle_workspace = require("android.gradle.workspace")
+local logcat_action = require("android.actions.logcat")
 local logcat_package = require("android.logcat.package")
 local logcat_session = require("android.logcat.session")
 local menu_items = require("android.ui.menu_items")
@@ -281,25 +282,29 @@ local function patch_logcat()
 end
 
 -- `actions/build.lua` gọi deploy với aapt2 nil và không có app_id nên launch bị
--- bỏ qua; điền sẵn hai giá trị đó cho mọi lời gọi deploy.
+-- bỏ qua; điền sẵn hai giá trị đó cho mọi lời gọi deploy. Deploy xong thì mở
+-- logcat, để :AndroidInstallRun cũng có panel giống :AndroidBuildRun.
 local function patch_deploy()
   patch(deploy, "deploy", function(original)
     return function(opts)
       local options = opts or {}
-      if not blank(options.aapt2_path) and not blank(options.app_id) then
-        return original(options)
+      if blank(options.aapt2_path) or blank(options.app_id) then
+        local workspace = context.workspace()
+        options = vim.tbl_extend("force", {}, options)
+        if blank(options.aapt2_path) and workspace then
+          options.aapt2_path = find_aapt2(discovery.new({ root = workspace.root }))
+        end
+        if blank(options.app_id) then
+          options.app_id = app_id_from_metadata(options.apk_path or "")
+            or M.resolve_app_id(workspace, { runner = options.runner })
+        end
       end
 
-      local workspace = context.workspace()
-      options = vim.tbl_extend("force", {}, options)
-      if blank(options.aapt2_path) and workspace then
-        options.aapt2_path = find_aapt2(discovery.new({ root = workspace.root }))
+      local result = original(options)
+      if result.ok and not result.warning then
+        vim.schedule(logcat_action.open)
       end
-      if blank(options.app_id) then
-        options.app_id = app_id_from_metadata(options.apk_path or "")
-          or M.resolve_app_id(workspace, { runner = options.runner })
-      end
-      return original(options)
+      return result
     end
   end)
 end

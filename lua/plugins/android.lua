@@ -7,7 +7,7 @@ return {
 
       require("config.android_custom").setup()
 
-      vim.keymap.set("n", "<leader>ab", "<cmd>AndroidInstallRun<cr>", {
+      vim.keymap.set("n", "<leader>aa", "<cmd>AndroidInstallRun<cr>", {
         silent = true,
         desc = "Android install & run",
       })
